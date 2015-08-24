@@ -26,4 +26,4 @@ execFile('./nbe-processor.rb', args, function(error, stdout, stderr) {
   if (error) {
     console.log('error:\n', error);
   }
-})
+});
