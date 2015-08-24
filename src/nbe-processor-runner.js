@@ -1,5 +1,13 @@
 /*
  * A JS script that runs ./nbe-processor.rb with the specified arguments. 
+ * Usage: 
+ *   node nbe-processor-runner.js input-filename [-c]
+ * Example:
+ *   > node nbe-processor-runner.js resources/input.nbe
+ *
+ * If redis storage is needed to be cleaned, use the following command: 
+ *  
+ *   > node nbe-processor-runner.js resources/input.nbe -c     
  */
 var execFile = require('child_process').execFile
 var args = process.argv.slice(2);
