@@ -10,7 +10,7 @@ RUN apt-get update
 RUN apt-get install -y ruby2.0 wget
 
 # install node and npm
-RUN apt-get install -y node npm
+RUN apt-get install -y nodejs npm
 
 # downloading rubygems
 RUN wget https://rubygems.org/rubygems/rubygems-2.4.8.tgz
