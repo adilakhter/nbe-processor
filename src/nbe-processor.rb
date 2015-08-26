@@ -1,31 +1,15 @@
 #!/usr/bin/env ruby
-%w{rubygems time redis csv json}.each{|r| require r}
-
-
-# Key name for primary index. 
-# Using this key, the list of available reports are stored as set in REDIS
-NBE_REPORTS_KEY = "reports"
-
-# REDIS Host 
-REDIS_HOST = ENV["REDIS_PORT_6379_TCP_ADDR"].nil? ? "127.0.0.1" : ENV["REDIS_PORT_6379_TCP_ADDR"]
-
-# REDIS PORT 
-REDIS_PORT_NO = ENV["REDIS_PORT_6379_TCP_PORT"].nil? ? "6379" : ENV["REDIS_PORT_6379_TCP_PORT"]
+%w{rubygems time csv json}.each{|r| require r}
 
 # Returns the timestamp, which we utilize as the key for the issues 
 # stored in the current run. 
-def current_report_id(srcFilePath) 
+def report_generation_time(srcFilePath) 
   return File.mtime(srcFilePath).strftime("%d-%m-%Y-%H-%M-%S")
 end
 
-def index_report(report_id)
-  # Adding it to REDIS SET of available reports indexed by report_id
-  # In order to get all the members: use <smembers reports>.
-  # Example:
-  # 127.0.0.1:6379> SMEMBERS add_reports_index_with
-  # 1) "20-08-2015-20-47-20"
-  # 2) "20-08-2015-20-47-22"
-  $redis.sadd(NBE_REPORTS_KEY , report_id) 
+
+def report_file_base_name(srcFilePath) 
+  return File.basename(srcFilePath, ".nbe")
 end
 
 def output_missing_arguments_error
@@ -42,34 +26,55 @@ end
 
 
 def process_nbe
-  if ARGV.empty?
+  if ARGV.empty? || ARGV.length < 1
     output_missing_arguments_error
   else     
     # Parsing arguments 
-    nbe_file_name = ARGV[0]
+    nbe_file_path = ARGV[0]
     should_clean_db = (ARGV[1].nil? or ARGV[1] != '-c') ? false :  true
 
     # Initializing the processor 
-    report_id = current_report_id(nbe_file_name)
+    nbe_timestamp = report_generation_time(nbe_file_path)
+
+    nbe_report_file_base_name = report_file_base_name(nbe_file_path)
+    nbe_host_name = nbe_report_file_base_name.split("-")[1].tr("_", ".")
+    nbe_scanner_id = ''
+
+    $stdout.puts "Processing '"+ nbe_file_path  + "' and converting it to the following JSON file: '"+ nbe_report_file_base_name + ".json' ...\n"
+
+    csv_issues = CSV.read(nbe_file_path, col_sep: '|')
     
-    # Connecting to REDIS
-    $stdout.puts "Connecting to Redis at host: "+ REDIS_HOST + " and port: "+ REDIS_PORT_NO + "..."
-    $redis = Redis.new(:host => REDIS_HOST, :port => REDIS_PORT_NO) 
-    if should_clean_db 
-      $stdout.puts "Cleaning Radis storage ..."  
-      $redis.flushall
-    end
+    is_nbe_header = true
+    nbe_issues = Array.new
 
-    $stdout.puts "Processing '"+ nbe_file_name  + "' with REPORT_ID: '"+ report_id + "' ...\n"
-    CSV.foreach(nbe_file_name, col_sep: '|', headers:true) { |nbeIssue| 
-        $stdout.puts nbeIssue.to_hash.to_json
-        $redis.sadd(report_id, nbeIssue.to_hash.to_json)
+    
+
+    csv_issues.each { |nbe_issue|
+        if is_nbe_header
+          nbe_scanner_id = nbe_issue[6]
+          is_nbe_header = false
+        else 
+          nbe_issue_hash         = {}
+          nbe_issue_hash[:timestamp]  = nbe_timestamp
+          nbe_issue_hash[:scanner] = nbe_scanner_id
+          nbe_issue_hash[:host] = nbe_host_name
+          nbe_issue_hash[:port] = nbe_issue[3]
+          nbe_issue_hash[:id] = nbe_issue[4]
+          nbe_issue_hash[:severity] = nbe_issue[5]
+          nbe_issue_hash[:description] = nbe_issue[6]
+
+          nbe_issues.push(nbe_issue_hash)
+        end
     }
-
-    # Updating Reports index with the current report. 
-    index_report(report_id) 
-
-    $stdout.puts("\nProcessing  completed with REPORT_ID: "+report_id + "...\nUse <SMEMBERS "+report_id +"> to retrieve the issues as JSON.")
+    
+    File.open(nbe_report_file_base_name+'.json', 'w') do |f|  
+      nbe_issues.each { |nbe_issue| 
+        f << nbe_issue.to_json
+        f << "\n"
+      }  
+    end      
+    
+    $stdout.puts "\nProcessing  completed and following JSON file has been generated: '"+ nbe_report_file_base_name + ".json' ...\n"
   end 
 end
 
